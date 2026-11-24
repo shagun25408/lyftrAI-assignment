@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { Activity, ArrowDown, ArrowUp, AudioLines, Check, ChevronDown, CircleHelp, Command, Cpu, Database, KeyRound, Moon, Plus, Settings2, Sparkles, Sun, X } from 'lucide-react'
+import { Activity, ArrowUp, AudioLines, Check, ChevronDown, CircleHelp, Command, Cpu, Database, KeyRound, Moon, Plus, Settings2, Sparkles, Sun, X } from 'lucide-react'
 import { PromptBondScene } from '@/components/ui/prompt-bond'
 import { api, type ChatMessage, type Health } from '@/lib/api'
 
