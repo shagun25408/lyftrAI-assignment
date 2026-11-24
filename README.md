@@ -1,132 +1,283 @@
 # Lyftr AI
 
-Lyftr AI is a single-session-at-a-time chat workspace with a FastAPI service, LiteLLM Router deployments, SQLite conversation storage, exact-match in-process LiteLLM caching, and a React/Vite interface. It uses one backend worker so the local cache stays consistent. The browser creates a fresh session ID each page load; history is never restored automatically.
+**A lightweight AI chatbot with conversation memory, response caching, and automatic API fallback.**
 
-## 1. Live URLs
+Lyftr AI is a full-stack chatbot built to explore how modern AI applications work beyond simply sending a prompt to an LLM. It uses Google's Gemini API to generate responses and includes features such as conversation history, caching for repeated questions, and fallback handling when an API provider is unavailable.
 
-No public deployment has been created. Frontend and backend URLs are pending deployment and external credentials.
+The application has a React frontend and a FastAPI backend, with the backend containerized using Docker and deployed separately from the frontend.
 
-## 2. Run locally: with Docker and without
+## Live Demo
 
-### Prerequisites
+- **Live Application:** https://lyftrai-chatbot.netlify.app
+- **Backend API:** https://lyftr-ai-backend-kwno.onrender.com
+- **Health Check:** https://lyftr-ai-backend-kwno.onrender.com/health
+- **GitHub Repository:** https://github.com/shagun25408/lyftrAI-assignment
 
-- Docker Desktop and Docker Compose for the container workflow.
-- Python 3.12 and Node.js 22 for the non-Docker workflow.
-- Two valid provider API keys supported by the selected LiteLLM model.
+## Features
 
-Copy `.env.example` to `.env`, replace both placeholder values with Gemini API keys from Google AI Studio, and keep `LLM_MODEL=gemini/gemini-3.5-flash-lite`. This uses LiteLLM's Google AI Studio provider. Never commit `.env`.
+- **AI-powered conversations:** Generates responses using Google's Gemini API through LiteLLM.
+- **Conversation memory:** Maintains conversation history within a session so follow-up questions have context.
+- **Response caching:** Stores responses to avoid unnecessary API calls when the same question is repeated in the same context.
+- **Automatic API fallback:** Attempts another configured API key when a provider request fails.
+- **Failure handling:** Handles provider errors and returns appropriate responses instead of leaving requests unresolved.
+- **Session history:** Stores conversation messages using SQLite.
+- **REST API:** Provides a FastAPI backend with interactive API documentation.
+- **Docker support:** Packages the backend for consistent deployment.
+- **Cloud deployment:** Frontend and backend are deployed independently.
 
-### Docker
+## Tech Stack
 
-From the repository root:
+| Area | Technology |
+|---|---|
+| Frontend | React, Vite |
+| Backend | Python, FastAPI |
+| AI Integration | Google Gemini, LiteLLM |
+| Database | SQLite |
+| Containerization | Docker |
+| Frontend Hosting | Netlify |
+| Backend Hosting | Render |
+| Version Control | Git, GitHub |
 
-```sh
-make up
+## Project Architecture
+
+The application follows a simple frontend-backend architecture.
+
+1. The user sends a message through the React frontend.
+2. The frontend sends the request to the FastAPI backend.
+3. The backend checks whether a matching response is available in the cache.
+4. If there is no cache hit, the backend sends the conversation context to Gemini.
+5. If a configured API key fails, the backend attempts another available key.
+6. The response is returned to the frontend and the conversation is stored in the database.
+
+```text
+                 User
+                  |
+                  v
+          React + Vite Frontend
+                  |
+                  v
+             FastAPI Backend
+                  |
+          +-------+-------+
+          |               |
+          v               v
+     Cache Check      Session History
+          |
+     Cache Miss
+          |
+          v
+       LiteLLM
+          |
+          v
+      Google Gemini
+          |
+     API Fallback
+          |
+          v
+      AI Response
+          |
+          v
+       Frontend
 ```
 
-Open the frontend at http://localhost:3000 and the backend at http://localhost:8000. SQLite lives in the named `lyftr-data` volume mounted at `/data`. Stop the services with `make down`.
+## Project Structure
 
-### Without Docker
+```text
+lyftrAI-assignment/
+│
+├── backend/
+│   ├── app/
+│   │   ├── config.py
+│   │   └── services/
+│   │       └── llm_service.py
+│   ├── tests/
+│   │   └── test_api.py
+│   ├── Dockerfile
+│   └── requirements.txt
+│
+├── frontend/
+│   └── src/
+│       └── lib/
+│           └── api.ts
+│
+├── render.yaml
+├── .env.example
+├── .gitignore
+└── README.md
+```
 
-Backend (from `backend/`):
+*The structure above highlights the main application files; additional frontend and backend modules are omitted for readability.*
 
-```sh
-python -m venv .venv
-# Activate .venv, then:
+## ⚙️ Getting Started
+
+Follow these steps to run Lyftr AI locally.
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/shagun25408/lyftrAI-assignment.git
+cd lyftrAI-assignment
+```
+
+### 2. Configure the backend
+
+Navigate to the backend directory:
+
+```bash
+cd backend
+```
+
+Create and activate a virtual environment:
+
+```bash
+python -m venv venv
+```
+
+On Windows:
+
+```powershell
+venv\Scripts\activate
+```
+
+On macOS/Linux:
+
+```bash
+source venv/bin/activate
+```
+
+Install the dependencies:
+
+```bash
 pip install -r requirements.txt
+```
+
+Create a `.env` file using the provided `.env.example` as a reference. Configure the required environment variables:
+
+```env
+LLM_API_KEYS=your_gemini_api_key
+LLM_MODEL=gemini/gemini-3.5-flash-lite
+DATABASE_URL=sqlite:///./app.db
+ALLOWED_ORIGINS=http://localhost:3000
+CACHE_ENABLED=true
+ENABLE_FAILURE_SIMULATION=false
+```
+
+Get a Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey).
+
+Start the backend:
+
+```bash
 uvicorn app.main:app --reload --port 8000
 ```
 
-Frontend (from `frontend/`):
-
-```sh
-npm install
-npm run dev -- --port 3000
-```
-
-The Vite development server uses `VITE_API_BASE_URL` from the environment or defaults to `http://localhost:8000`.
-
-### Repository structure
+The backend will be available at:
 
 ```text
-backend/app/             FastAPI application, config, SQLAlchemy models and routes
-backend/app/services/    LiteLLM calls, Router deployments and response cache
-backend/tests/           Deterministic mocked API tests
-frontend/src/             React workspace, typed API client and UI
-frontend/src/components/  Shared UI components
-docker-compose.yml        Local full-stack services and persistent SQLite volume
+http://localhost:8000
 ```
 
-## 3. Design decisions: key fallback, caching, SQLite session storage
+Interactive API documentation:
 
-- Two independently configured API keys are mapped to distinct LiteLLM Router deployments. A request tries them in order; if one errors, the next configured deployment gets its own Router call. The optional failure simulation skips a deployment for that request only.
-- LiteLLM's in-process `Cache(type="local")` stores response objects. Its lookup key is a SHA-256 digest of the configured model and the complete ordered message list, which includes system prompt, history and latest message, and excludes session ID. This allows identical first turns in separate sessions to hit the same response while preserving conversational context.
-- Cache hits replay the cached output and usage, label the response `LLM_CACHE`, and report no provider key or fallback attempts. Cache entries share one process and are lost when the backend restarts; deploy one worker initially.
-- SQLAlchemy uses SQLite and creates the `sessions` and `messages` tables on application startup. Only successful user/assistant exchanges are committed. The public history route omits system prompts and returns assistant metadata.
-- The screenshot and `prompt-bond-source.txt` named in the implementation brief were not present in the supplied workspace/attachments. The chat is implemented in a custom ambient scene wrapper; the original Prompt Bond component, its MIT notice, and exact screenshot match remain dependent on providing those reference files.
-
-## 4. Verification: how to see failover, cache hits and per-message token usage
-
-Start Docker with configured keys and check:
-
-```sh
-curl http://localhost:8000/health
-curl -X POST http://localhost:8000/chat -H "Content-Type: application/json" -d '{"session_id":"demo-a","message":"Explain API caching in one sentence."}'
-curl -X POST http://localhost:8000/chat -H "Content-Type: application/json" -d '{"session_id":"demo-b","message":"Explain API caching in one sentence."}'
-curl http://localhost:8000/sessions/demo-a/messages
+```text
+http://localhost:8000/docs
 ```
 
-The second identical first turn is eligible for an `LLM_CACHE` response. To demonstrate fallback, use a new prompt to avoid a prior cache hit:
+### 3. Configure the frontend
 
-```sh
-curl -X POST http://localhost:8000/chat -H "Content-Type: application/json" -H "X-Simulate-Failure: key_1=429" -d '{"session_id":"fallback-demo","message":"Give a fresh random color name."}'
+Open another terminal and navigate to the frontend directory:
+
+```bash
+cd frontend
 ```
 
-It should report `key_2` and one fallback attempt. Simulate all deployments failing with `X-Simulate-Failure: *=429`; the endpoint should return JSON `detail` with HTTP 503 and should not save that exchange. This hook is enabled by default in `.env.example`; disable it in production if desired.
+Install dependencies:
 
-Each assistant message renders its own source, model, latency, input tokens, output tokens, key ID and fallback count. Token values come from LiteLLM's provider response; tests mock them deterministically. No real provider test has been run in this workspace.
+```bash
+npm install
+```
 
-### Tests
+Create a `.env` file in the frontend directory:
 
-From `backend/`, run:
+```env
+VITE_API_BASE_URL=http://localhost:8000
+```
 
-```sh
+Start the development server:
+
+```bash
+npm run dev
+```
+
+Open the local URL displayed by Vite in your terminal.
+
+## Environment Variables
+
+### Backend
+
+| Variable | Description |
+|---|---|
+| `LLM_API_KEYS` | Comma-separated Gemini API keys used by the backend |
+| `LLM_MODEL` | LLM model identifier |
+| `DATABASE_URL` | Database connection string |
+| `ALLOWED_ORIGINS` | Frontend origins allowed by CORS |
+| `CACHE_ENABLED` | Enables or disables response caching |
+| `ENABLE_FAILURE_SIMULATION` | Enables controlled failure simulation for testing |
+
+### Frontend
+
+| Variable | Description |
+|---|---|
+| `VITE_API_BASE_URL` | Base URL of the backend API |
+
+**Important:** Keep API keys in environment variables. Never commit your `.env` files or expose API credentials in frontend code.
+
+## Testing
+
+The backend includes automated tests for API behavior, provider fallback, error handling, and related application logic.
+
+Run the backend tests from the backend directory:
+
+```bash
 pytest
 ```
 
-The tests use mocked provider results and cover health fields/key count, schema validation, history isolation, assistant metadata, simulated fallback and all-key failure. They do not prove real credentials work or validate a live LiteLLM response cache.
+The frontend production build can be checked using:
 
-### Demo recording checklist (2-3 minutes)
-
-1. Open the dashboard and send a real prompt.
-2. Point out per-message metadata.
-3. Start a fresh session and resend the same first prompt to show cache behavior.
-4. Ask a follow-up that relies on previous context.
-5. Send the fallback request header using a new prompt and show `key_2`.
-6. Send `*=429` and show the 503 JSON response.
-7. Open `/health` and the session message history endpoint.
-
-## 5. Setup Used: your editor and AI tools
-
-Implementation prepared in the Lyftr AI workspace with Codex. Repository setup and code are local; no live deployment or real-key validation has been performed.
-
-## 6. Bonus features (if any): what you added beyond the requirements and why
-
-- Theme toggle and a per-session system-prompt editor for workspace customization.
-- Animated status indicators, reduced-motion handling, mobile infrastructure summary and helpful starter prompts.
-- A named SQLite Docker volume so conversation data survives container recreation.
-
-## API examples
-
-```sh
-curl -X POST http://localhost:8000/chat -H "Content-Type: application/json" -d '{"session_id":"s-demo","message":"What is the capital of France?"}'
-curl http://localhost:8000/sessions/s-demo/messages
+```bash
+npm run build
 ```
 
-The application has exactly three API routes: `GET /health`, `POST /chat`, and `GET /sessions/{session_id}/messages`. FastAPI docs and OpenAPI routes are disabled.
+Failure simulation is intended for testing and should remain disabled in production.
 
-## Deployment
+##  Deployment
 
-Build the frontend static image with the public API URL in `VITE_API_BASE_URL` (or `VITE_API_BASE_URL` build arg) and configure `ALLOWED_ORIGINS` to the frontend origin. Deploy the backend with a persistent disk mounted at `/data`, `DATABASE_URL=sqlite:////data/app.db`, both real provider credentials, and one worker. Keep public deployment URLs marked pending until deployment and endpoint checks succeed.
+Lyftr AI is deployed using two separate services:
 
-For Render, connect the public Git repository containing this project and create a Blueprint from `render.yaml`. Enter `LLM_API_KEYS` and `LLM_MODEL` in the prompted secret fields. After the service deploys, copy its assigned `onrender.com` origin into the frontend's `VITE_API_BASE_URL` build setting and into the backend's `ALLOWED_ORIGINS`, then redeploy both tiers. The persistent SQLite disk is attached at `/data`; Render requires a paid web service plan for persistent disks.
+- **Frontend:** Hosted on [Netlify](https://www.netlify.com/).
+- **Backend:** Containerized using Docker and hosted on [Render](https://render.com/).
+
+The frontend communicates with the deployed backend through the `VITE_API_BASE_URL` environment variable.
+
+The backend uses environment variables configured in the Render dashboard for API credentials and application settings.
+
+##  Future Improvements
+
+Some areas I would like to explore further:
+
+- Support for additional LLM providers.
+- Persistent response caching across backend restarts.
+- Improved conversation management and session controls.
+- Better monitoring and analytics for API usage.
+- More comprehensive automated frontend testing.
+
+## Author
+
+**Shagun**
+
+B.Tech Computer Science Engineering | DevOps & Cloud
+
+- [GitHub](https://github.com/shagun25408)
+
+---
+
+*Built as a hands-on project to understand the engineering behind AI-powered applications, from API integration and backend development to caching, reliability, and cloud deployment.*
