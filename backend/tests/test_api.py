@@ -1,4 +1,5 @@
 import asyncio
+from types import SimpleNamespace
 from fastapi.testclient import TestClient
 from app.main import app
 from app.routers import api as api_module
@@ -66,3 +67,42 @@ def test_multi_turn_history_is_sent_to_llm(monkeypatch):
     client.post("/chat", json={"session_id":"memory-check", "message":"Remember: my color is violet."})
     client.post("/chat", json={"session_id":"memory-check", "message":"What color did I mention?"})
     assert any(message["content"] == "Remember: my color is violet." for message in seen[-1])
+
+def test_litellm_local_cache_replays_result_without_provider_call(monkeypatch):
+    from app.config import get_settings
+    settings = get_settings()
+    settings.cache_enabled = True
+    calls = []
+    class FakeRouter:
+        async def acompletion(self, **kwargs):
+            calls.append(kwargs)
+            return SimpleNamespace(model=settings.llm_model, choices=[SimpleNamespace(message=SimpleNamespace(content="cached answer"))],
+                                   usage=SimpleNamespace(prompt_tokens=23, completion_tokens=4))
+    monkeypatch.setattr(llm_service, "_router", lambda key, index: FakeRouter())
+    prompt = [{"role":"system", "content":"test cache prompt"}, {"role":"user", "content":"unique cache key 2026-11-24"}]
+    first = asyncio.run(llm_service.complete(prompt, {}))
+    second = asyncio.run(llm_service.complete(prompt, {}))
+    assert first["reply"] == second["reply"] == "cached answer"
+    assert first["resolution_source"] == "LIVE_INFERENCE"
+    assert second["resolution_source"] == "LLM_CACHE"
+    assert second["key_id"] is None and second["fallback_attempts"] == 0
+    assert second["input_tokens"] == 23 and second["output_tokens"] == 4
+    assert len(calls) == 1
+
+def test_real_service_failover_selects_the_unfailed_deployment(monkeypatch):
+    from app.config import get_settings
+    settings = get_settings()
+    settings.cache_enabled = False
+    used = []
+    class FakeRouter:
+        def __init__(self, index):
+            self.index = index
+        async def acompletion(self, **kwargs):
+            used.append(self.index)
+            return SimpleNamespace(model=settings.llm_model, choices=[SimpleNamespace(message=SimpleNamespace(content="answered by backup"))],
+                                   usage=SimpleNamespace(prompt_tokens=5, completion_tokens=2))
+    monkeypatch.setattr(llm_service, "_router", lambda key, index: FakeRouter(index))
+    result = asyncio.run(llm_service.complete([{"role":"user", "content":"unique failover check"}], {"key_1":429}))
+    assert result["key_id"] == "key_2"
+    assert result["fallback_attempts"] == 1
+    assert used == [2]
