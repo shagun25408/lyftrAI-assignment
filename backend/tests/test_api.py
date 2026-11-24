@@ -6,7 +6,7 @@ from app.services import llm_service
 
 client = TestClient(app)
 
-def fake_result(messages, simulated):
+async def fake_result(messages, simulated):
     if "*" in simulated:
         raise llm_service.AllDeploymentsFailed("All configured LLM deployments are unavailable")
     key = "key_2" if "key_1" in simulated else "key_1"
