@@ -104,6 +104,60 @@ def test_litellm_local_cache_replays_result_without_provider_call(monkeypatch):
     assert second["input_tokens"] == 23 and second["output_tokens"] == 4
     assert len(calls) == 1
 
+def test_identical_chat_request_hits_cache_and_changed_request_misses(monkeypatch):
+    from app.config import get_settings
+    settings = get_settings()
+    settings.cache_enabled = True
+    calls = []
+    class FakeRouter:
+        async def acompletion(self, **kwargs):
+            calls.append(kwargs)
+            return SimpleNamespace(model=settings.llm_model, choices=[SimpleNamespace(message=SimpleNamespace(content="cached route answer"))],
+                                   usage=SimpleNamespace(prompt_tokens=11, completion_tokens=3))
+    monkeypatch.setattr(llm_service, "_router", lambda key, index: FakeRouter())
+    payload = {"session_id":"repeat-question-cache", "message":"Repeat this exact cache question 2026-11-25"}
+    first = client.post("/chat", json=payload)
+    second = client.post("/chat", json=payload)
+    assert first.status_code == second.status_code == 200
+    assert first.json()["metadata"]["resolution_source"] == "LIVE_INFERENCE"
+    assert second.json()["metadata"]["resolution_source"] == "LLM_CACHE"
+    assert second.json()["metadata"]["latency_ms"] == 0
+    assert second.json()["metadata"]["input_tokens"] == 11
+    assert second.json()["metadata"]["output_tokens"] == 3
+    assert len(calls) == 1
+
+    changed = client.post("/chat", json={"session_id":payload["session_id"], "message":"A different cache question 2026-11-25"})
+    assert changed.status_code == 200
+    assert changed.json()["metadata"]["resolution_source"] == "LIVE_INFERENCE"
+    assert len(calls) == 2
+
+def test_cache_preserves_fallback_result(monkeypatch):
+    from app.config import get_settings
+    settings = get_settings()
+    settings.cache_enabled = True
+    used = []
+    class ProviderFailure(Exception):
+        status_code = 429
+    class FakeRouter:
+        def __init__(self, index):
+            self.index = index
+        async def acompletion(self, **kwargs):
+            used.append(self.index)
+            if self.index == 1:
+                raise ProviderFailure("simulated rate limit")
+            return SimpleNamespace(model=settings.llm_model, choices=[SimpleNamespace(message=SimpleNamespace(content="fallback cached answer"))],
+                                   usage=SimpleNamespace(prompt_tokens=9, completion_tokens=2))
+    monkeypatch.setattr(llm_service, "_router", lambda key, index: FakeRouter(index))
+    payload = {"session_id":"fallback-cache", "message":"Fallback cache question 2026-11-25"}
+    first = client.post("/chat", json=payload)
+    second = client.post("/chat", json=payload)
+    assert first.status_code == second.status_code == 200
+    assert first.json()["metadata"]["key_id"] == "key_2"
+    assert first.json()["metadata"]["fallback_attempts"] == 1
+    assert second.json()["metadata"]["resolution_source"] == "LLM_CACHE"
+    assert second.json()["metadata"]["key_id"] is None
+    assert used == [1, 2]
+
 def test_real_service_failover_selects_the_unfailed_deployment(monkeypatch):
     from app.config import get_settings
     settings = get_settings()
@@ -126,6 +180,22 @@ def test_different_contexts_have_different_litellm_cache_keys():
     first = [{"role":"system", "content":"Be concise."}, {"role":"user", "content":"first question"}]
     second = [{"role":"system", "content":"Be concise."}, {"role":"user", "content":"different question"}]
     assert llm_service._cache_key("test-model", first) != llm_service._cache_key("test-model", second)
+
+def test_cache_key_collapses_repeated_question_turns_but_keeps_context():
+    initial = [{"role":"system", "content":"Be concise."}, {"role":"user", "content":"repeat me"}]
+    repeated = initial + [
+        {"role":"assistant", "content":"answer"},
+        {"role":"user", "content":"repeat me"},
+    ]
+    third_repeat = repeated + [
+        {"role":"assistant", "content":"answer"},
+        {"role":"user", "content":"repeat me"},
+    ]
+    different_context = [{"role":"system", "content":"Be concise."}, {"role":"user", "content":"earlier context"},
+                         {"role":"assistant", "content":"context answer"}, {"role":"user", "content":"repeat me"}]
+    assert llm_service._cache_key("test-model", initial) == llm_service._cache_key("test-model", repeated)
+    assert llm_service._cache_key("test-model", initial) == llm_service._cache_key("test-model", third_repeat)
+    assert llm_service._cache_key("test-model", initial) != llm_service._cache_key("test-model", different_context)
 
 def test_litellm_resolves_configured_gemini_model():
     from litellm import get_llm_provider
