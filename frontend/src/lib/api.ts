@@ -13,7 +13,12 @@ const base = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(
 
 async function parse<T>(response: Response): Promise<T> {
   const data = await response.json().catch(() => null)
-  if (!response.ok) throw new Error(typeof data?.detail === 'string' ? data.detail : `Request failed (${response.status})`)
+  if (!response.ok) {
+    if (response.status === 503 && data?.detail === 'all providers unavailable') {
+      throw new Error('Lyftr AI is temporarily unavailable. Please try again.')
+    }
+    throw new Error(typeof data?.detail === 'string' ? data.detail : `Request failed (${response.status})`)
+  }
   if (!data) throw new Error('The server returned an invalid response.')
   return data as T
 }

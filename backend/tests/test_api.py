@@ -65,6 +65,87 @@ def test_simulation_fallback_and_all_failure(monkeypatch):
     assert failed.status_code == 503
     assert failed.json()["detail"] == "all providers unavailable"
 
+def test_simulated_fallback_preserves_history_and_caches_success(monkeypatch):
+    from app.config import get_settings
+    settings = get_settings()
+    monkeypatch.setattr(settings, "enable_failure_simulation", True)
+    monkeypatch.setattr(settings, "cache_enabled", True)
+    used = []
+    class FakeRouter:
+        def __init__(self, index):
+            self.index = index
+        async def acompletion(self, **kwargs):
+            used.append(self.index)
+            return SimpleNamespace(model=settings.llm_model, choices=[SimpleNamespace(message=SimpleNamespace(content="answered by backup"))],
+                                   usage=SimpleNamespace(prompt_tokens=8, completion_tokens=2))
+    monkeypatch.setattr(llm_service, "_router", lambda key, index: FakeRouter(index))
+    payload = {"session_id":"simulation-history-cache", "message":"Fresh simulated fallback test 2026-11-25"}
+    first = client.post("/chat", json=payload, headers={"X-Simulate-Failure":"key_1=429"})
+    assert first.status_code == 200
+    assert first.json()["metadata"]["key_id"] == "key_2"
+    assert first.json()["metadata"]["fallback_attempts"] == 1
+    assert used == [2]
+
+    history = client.get(f"/sessions/{payload['session_id']}/messages").json()["messages"]
+    assert [(message["role"], message["content"]) for message in history] == [
+        ("user", payload["message"]), ("assistant", "answered by backup")
+    ]
+    cached = client.post("/chat", json=payload)
+    assert cached.status_code == 200
+    assert cached.json()["metadata"]["resolution_source"] == "LLM_CACHE"
+    assert used == [2]
+
+def test_simulated_total_failure_is_not_saved_or_cached(monkeypatch):
+    from app.config import get_settings
+    settings = get_settings()
+    monkeypatch.setattr(settings, "enable_failure_simulation", True)
+    monkeypatch.setattr(settings, "cache_enabled", True)
+    used = []
+    class FakeRouter:
+        async def acompletion(self, **kwargs):
+            used.append(kwargs)
+            return SimpleNamespace(model=settings.llm_model, choices=[SimpleNamespace(message=SimpleNamespace(content="live after failure"))],
+                                   usage=SimpleNamespace(prompt_tokens=4, completion_tokens=3))
+    monkeypatch.setattr(llm_service, "_router", lambda key, index: FakeRouter())
+    payload = {"session_id":"simulation-total-failure", "message":"Fresh total failure test 2026-11-25"}
+    failed = client.post("/chat", json=payload, headers={"X-Simulate-Failure":"*=429"})
+    assert failed.status_code == 503
+    assert failed.json() == {"detail":"all providers unavailable"}
+    assert client.get(f"/sessions/{payload['session_id']}/messages").status_code == 404
+    assert used == []
+
+    # Turn simulation off and repeat the identical request: it must reach the
+    # provider, proving the failed simulated request did not populate the cache.
+    monkeypatch.setattr(settings, "enable_failure_simulation", False)
+    live = client.post("/chat", json=payload)
+    assert live.status_code == 200
+    assert live.json()["metadata"]["resolution_source"] == "LIVE_INFERENCE"
+    assert used and len(used) == 1
+
+def test_disabled_simulation_ignores_failure_header(monkeypatch):
+    from app.config import get_settings
+    settings = get_settings()
+    monkeypatch.setattr(settings, "enable_failure_simulation", False)
+    monkeypatch.setattr(settings, "cache_enabled", False)
+    used = []
+    class FakeRouter:
+        def __init__(self, index):
+            self.index = index
+        async def acompletion(self, **kwargs):
+            used.append(self.index)
+            return SimpleNamespace(model=settings.llm_model, choices=[SimpleNamespace(message=SimpleNamespace(content="normal inference"))],
+                                   usage=SimpleNamespace(prompt_tokens=4, completion_tokens=2))
+    monkeypatch.setattr(llm_service, "_router", lambda key, index: FakeRouter(index))
+    response = client.post(
+        "/chat",
+        json={"session_id":"simulation-disabled", "message":"Fresh disabled simulation test 2026-11-25"},
+        headers={"X-Simulate-Failure":"key_1=429"},
+    )
+    assert response.status_code == 200
+    assert response.json()["metadata"]["key_id"] == "key_1"
+    assert response.json()["metadata"]["fallback_attempts"] == 0
+    assert used == [1]
+
 def test_failed_generation_does_not_create_history(monkeypatch):
     async def unavailable(messages, simulated):
         raise llm_service.AllDeploymentsFailed("unavailable")
