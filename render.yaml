@@ -1,0 +1,27 @@
+services:
+  - type: web
+    name: lyftr-ai-backend
+    runtime: docker
+    plan: starter
+    region: singapore
+    dockerContext: ./backend
+    dockerfilePath: ./backend/Dockerfile
+    healthCheckPath: /health
+    numInstances: 1
+    disk:
+      name: lyftr-sqlite-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: DATABASE_URL
+        value: sqlite:////data/app.db
+      - key: LLM_API_KEYS
+        sync: false
+      - key: LLM_MODEL
+        sync: false
+      - key: ALLOWED_ORIGINS
+        value: http://localhost:3000
+      - key: ENABLE_FAILURE_SIMULATION
+        value: "true"
+      - key: CACHE_ENABLED
+        value: "true"
