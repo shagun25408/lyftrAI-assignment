@@ -21,6 +21,17 @@ def test_health_has_required_fields():
     assert set(response.json()) == {"status", "keys_configured", "cache_enabled"}
     assert response.json()["keys_configured"] == 2
 
+def test_swagger_docs_and_openapi_schema_are_enabled():
+    docs = client.get("/docs")
+    assert docs.status_code == 200
+    assert "swagger-ui" in docs.text.lower()
+
+    schema_response = client.get("/openapi.json")
+    assert schema_response.status_code == 200
+    schema = schema_response.json()
+    assert schema["info"]["title"] == "Lyftr AI"
+    assert {"/health", "/chat", "/sessions/{session_id}/messages"}.issubset(schema["paths"])
+
 def test_health_rejects_a_single_key_pool():
     from app.config import get_settings
     settings = get_settings()
