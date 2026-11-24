@@ -57,7 +57,7 @@ export default function App() {
         <p className="hero-subtitle">A thoughtful space for your next big idea.</p>
       </section>
       <div className="workspace">
-        <DecorativeSide side="left" session={session} count={messages.length} />
+        <DecorativeSide side="left" session={session} count={messages.length} promptConfigured={Boolean(systemPrompt.trim())} />
         <motion.section className="chat-panel" initial={{ opacity: 0, y: 18, scale: .985 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: .55, delay: .08 }}>
           <div className="panel-head"><div className="assistant-avatar"><Sparkles size={17}/></div><div className="assistant-titles"><strong>AI Assistant</strong><span><i className="status-dot"/> Here with you</span></div><div className="panel-model"><Cpu size={14}/><span>{health ? 'Ready' : 'Offline'}</span><ChevronDown size={12}/></div><button className="panel-settings" onClick={() => setSettingsOpen(true)} aria-label="Assistant settings"><Settings2 size={17}/></button></div>
           <div className="conversation" aria-live="polite">
@@ -87,17 +87,21 @@ export default function App() {
 function Infrastructure({ health, meta }: { health: Health | null; meta: ChatMessage['metadata'] }) {
   return <div className="infra-strip"><span><Cpu size={13}/> {meta?.model || 'LLM model'}</span><span><KeyRound size={13}/> {health ? `${health.keys_configured} keys configured` : 'Keys unavailable'}</span><span><Database size={13}/> Cache {health?.cache_enabled ? 'on' : 'unknown'}</span><span><Activity size={13}/> {meta?.resolution_source || 'Awaiting response'}</span></div>
 }
-function DecorativeSide({ side, session, count, health, meta }: { side: 'left' | 'right'; session?: string; count?: number; health?: Health | null; meta?: ChatMessage['metadata'] }) {
+function DecorativeSide({ side, session, count, promptConfigured, health, meta }: { side: 'left' | 'right'; session?: string; count?: number; promptConfigured?: boolean; health?: Health | null; meta?: ChatMessage['metadata'] }) {
   const items = side === 'left' ? [
     { icon: <Command/>, label: 'SESSION', value: session?.slice(0, 11) || 'New session', color: 'lavender' },
     { icon: <AudioLines/>, label: 'HISTORY', value: `${count ?? 0} messages`, color: 'pink' },
     { icon: <Sparkles/>, label: 'CONTEXT', value: count ? 'In the flow' : 'Ready to begin', color: 'blue' },
     { icon: <Database/>, label: 'STORAGE', value: 'SQLite · saved', color: 'olive' },
+    { icon: <Settings2/>, label: 'SYSTEM PROMPT', value: promptConfigured ? 'Customized' : 'Default prompt', color: 'yellow' },
   ] : [
     { icon: <Cpu/>, label: 'MODEL', value: meta?.model || 'Configured model', color: 'blue' },
-    { icon: <KeyRound/>, label: 'PROVIDERS', value: health ? `${health.keys_configured} keys configured` : 'Checking connection', color: 'yellow' },
+    { icon: <KeyRound/>, label: 'PRIMARY KEY', value: health && health.keys_configured > 0 ? 'key_1 configured' : 'Unknown', color: 'yellow' },
+    { icon: <KeyRound/>, label: 'FALLBACK KEY', value: health && health.keys_configured > 1 ? 'key_2 configured' : 'Unknown', color: 'pink' },
     { icon: <Database/>, label: 'CACHE', value: health?.cache_enabled ? 'LiteLLM enabled' : 'Checking status', color: 'lavender' },
     { icon: <Activity/>, label: 'LAST RESPONSE', value: meta?.resolution_source || 'Awaiting response', color: meta?.resolution_source === 'LLM_CACHE' ? 'pink' : 'olive' },
+    { icon: <Activity/>, label: 'FALLBACK ATTEMPTS', value: meta ? `${meta.fallback_attempts} before success` : 'Awaiting response', color: 'olive' },
+    { icon: <CircleHelp/>, label: 'BACKEND', value: health ? 'API connected' : 'Unavailable', color: 'blue' },
   ]
   return <aside className={`float-column ${side}`}>{items.map((item, i) => <motion.div key={item.label} className={`float-chip ${item.color} chip-${i}`} initial={{ opacity: 0, x: side === 'left' ? -8 : 8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: .15 + i * .08 }}><span className="chip-icon">{item.icon}</span><span className="chip-copy"><span>{item.label}</span><strong>{item.value}</strong></span></motion.div>)}</aside>
 }
