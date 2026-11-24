@@ -14,7 +14,7 @@ No public deployment has been created. Frontend and backend URLs are pending dep
 - Python 3.12 and Node.js 22 for the non-Docker workflow.
 - Two valid provider API keys supported by the selected LiteLLM model.
 
-Copy `.env.example` to `.env`, replace both placeholder credentials, and set `LLM_MODEL` to a LiteLLM model identifier supported by that provider. Never commit `.env`.
+Copy `.env.example` to `.env`, replace both placeholder values with Gemini API keys from Google AI Studio, and keep `LLM_MODEL=gemini/gemini-3.5-flash-lite`. This uses LiteLLM's Google AI Studio provider. Never commit `.env`.
 
 ### Docker
 

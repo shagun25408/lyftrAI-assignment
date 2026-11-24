@@ -16,7 +16,16 @@ class AllDeploymentsFailed(Exception):
 
 def _router(key: str, index: int) -> Router:
     settings = get_settings()
-    deployment = {"model_name": "lyftr", "litellm_params": {"model": settings.llm_model, "api_key": key}, "model_info": {"id": f"key_{index}"}}
+    deployment = {
+        "model_name": "lyftr",
+        "litellm_params": {
+            # The gemini/ prefix selects Google AI Studio; LiteLLM maps this
+            # deployment api_key to Google's Gemini API authentication header.
+            "model": settings.llm_model,
+            "api_key": key,
+        },
+        "model_info": {"id": f"key_{index}"},
+    }
     return Router(model_list=[deployment], num_retries=0)
 
 def _cache_key(model: str, messages: list[dict[str, str]]) -> str:

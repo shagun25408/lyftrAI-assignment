@@ -127,6 +127,34 @@ def test_different_contexts_have_different_litellm_cache_keys():
     second = [{"role":"system", "content":"Be concise."}, {"role":"user", "content":"different question"}]
     assert llm_service._cache_key("test-model", first) != llm_service._cache_key("test-model", second)
 
+def test_litellm_resolves_configured_gemini_model():
+    from litellm import get_llm_provider
+    model, provider, *_ = get_llm_provider("gemini/gemini-3.5-flash-lite")
+    assert model == "gemini-3.5-flash-lite"
+    assert provider == "gemini"
+
+def test_provider_auth_failure_falls_back_to_next_key(monkeypatch):
+    from app.config import get_settings
+    settings = get_settings()
+    settings.cache_enabled = False
+    used = []
+    class AuthenticationFailure(Exception):
+        status_code = 401
+    class FakeRouter:
+        def __init__(self, index):
+            self.index = index
+        async def acompletion(self, **kwargs):
+            used.append(self.index)
+            if self.index == 1:
+                raise AuthenticationFailure("invalid key")
+            return SimpleNamespace(model=settings.llm_model, choices=[SimpleNamespace(message=SimpleNamespace(content="backup answered"))],
+                                   usage=SimpleNamespace(prompt_tokens=5, completion_tokens=2))
+    monkeypatch.setattr(llm_service, "_router", lambda key, index: FakeRouter(index))
+    result = asyncio.run(llm_service.complete([{"role":"user", "content":"unique auth fallback check"}], {}))
+    assert result["key_id"] == "key_2"
+    assert result["fallback_attempts"] == 1
+    assert used == [1, 2]
+
 def test_sqlite_history_survives_application_restart(monkeypatch):
     monkeypatch.setattr(api_module, "complete", fake_result)
     with TestClient(app) as first_run:
