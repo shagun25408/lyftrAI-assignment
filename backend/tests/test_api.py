@@ -21,6 +21,16 @@ def test_health_has_required_fields():
     assert set(response.json()) == {"status", "keys_configured", "cache_enabled"}
     assert response.json()["keys_configured"] == 2
 
+def test_health_rejects_a_single_key_pool():
+    from app.config import get_settings
+    settings = get_settings()
+    original = settings.llm_api_keys
+    try:
+        settings.llm_api_keys = "one-key"
+        assert client.get("/health").status_code == 503
+    finally:
+        settings.llm_api_keys = original
+
 def test_validation_and_unknown_session():
     assert client.post("/chat", json={"session_id":"x", "message":"   "}).status_code == 422
     assert client.post("/chat", json={"session_id":"x", "message":"a"*4001}).status_code == 422
@@ -48,7 +58,7 @@ def test_simulation_fallback_and_all_failure(monkeypatch):
     assert response.json()["metadata"]["fallback_attempts"] == 1
     failed = client.post("/chat", json={"session_id":"sim-all", "message":"try"}, headers={"X-Simulate-Failure":"*=429"})
     assert failed.status_code == 503
-    assert failed.json()["detail"]
+    assert failed.json()["detail"] == "all providers unavailable"
 
 def test_failed_generation_does_not_create_history(monkeypatch):
     async def unavailable(messages, simulated):
@@ -106,3 +116,18 @@ def test_real_service_failover_selects_the_unfailed_deployment(monkeypatch):
     assert result["key_id"] == "key_2"
     assert result["fallback_attempts"] == 1
     assert used == [2]
+
+def test_different_contexts_have_different_litellm_cache_keys():
+    first = [{"role":"system", "content":"Be concise."}, {"role":"user", "content":"first question"}]
+    second = [{"role":"system", "content":"Be concise."}, {"role":"user", "content":"different question"}]
+    assert llm_service._cache_key("test-model", first) != llm_service._cache_key("test-model", second)
+
+def test_sqlite_history_survives_application_restart(monkeypatch):
+    monkeypatch.setattr(api_module, "complete", fake_result)
+    with TestClient(app) as first_run:
+        result = first_run.post("/chat", json={"session_id":"persist-restart", "message":"keep this"})
+        assert result.status_code == 200
+    with TestClient(app) as second_run:
+        history = second_run.get("/sessions/persist-restart/messages")
+    assert history.status_code == 200
+    assert history.json()["messages"][0]["content"] == "keep this"

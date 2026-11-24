@@ -15,8 +15,8 @@ def health():
         with SessionLocal() as db:
             db.execute(select(1))
         settings = get_settings()
-        if not settings.api_keys:
-            raise RuntimeError("No configured keys")
+        if len(settings.api_keys) < 2:
+            raise RuntimeError("At least two LLM API keys are required")
         return {"status": "ok", "keys_configured": len(settings.api_keys), "cache_enabled": settings.cache_enabled}
     except Exception as exc:
         raise HTTPException(503, detail="Required infrastructure is not initialized") from exc
@@ -43,7 +43,7 @@ async def chat(payload: ChatRequest, x_simulate_failure: str | None = Header(def
     try:
         result = await complete(messages, simulated)
     except AllDeploymentsFailed as exc:
-        raise HTTPException(503, detail=str(exc)) from exc
+        raise HTTPException(503, detail="all providers unavailable") from exc
     metadata = {name: result[name] for name in ("resolution_source", "model", "latency_ms", "input_tokens", "output_tokens", "key_id", "fallback_attempts")}
     with SessionLocal() as db:
         session = db.get(ChatSession, payload.session_id)
@@ -62,7 +62,7 @@ async def chat(payload: ChatRequest, x_simulate_failure: str | None = Header(def
 def history(session_id: str):
     with SessionLocal() as db:
         if db.get(ChatSession, session_id) is None:
-            raise HTTPException(404, detail="Session not found")
+            raise HTTPException(404, detail="session not found")
         rows = db.scalars(select(Message).where(Message.session_id == session_id).order_by(Message.id)).all()
         messages = []
         for row in rows:
