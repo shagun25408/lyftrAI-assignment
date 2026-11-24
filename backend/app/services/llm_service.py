@@ -1,5 +1,6 @@
 import hashlib
 import json
+import logging
 import time
 from typing import Any
 from litellm import Router
@@ -7,6 +8,7 @@ from litellm.caching import Cache
 from ..config import get_settings
 
 DEFAULT_PROMPT = "You are Lyftr AI, a helpful and concise assistant."
+logger = logging.getLogger(__name__)
 _cache = Cache(type="local")
 
 class AllDeploymentsFailed(Exception):
@@ -45,6 +47,12 @@ async def complete(messages: list[dict[str, str]], simulate: dict[str, int]) -> 
                 _cache.add_cache(json.dumps(result), cache_key=semantic_key, messages=messages)
             return {**result, "resolution_source": "LIVE_INFERENCE", "latency_ms": int((time.perf_counter()-started)*1000),
                     "key_id": key_id, "fallback_attempts": errors}
-        except Exception:
+        except Exception as exc:
             errors += 1
+            logger.warning(
+                "LLM deployment failed key_id=%s error_type=%s status_code=%s",
+                key_id,
+                type(exc).__name__,
+                getattr(exc, "status_code", None),
+            )
     raise AllDeploymentsFailed("All configured LLM deployments are unavailable")
