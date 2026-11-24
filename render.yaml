@@ -2,7 +2,7 @@ services:
   - type: web
     name: lyftr-ai-backend
     runtime: docker
-    plan: starter
+    plan: 0.5c-512mb
     region: singapore
     dockerContext: ./backend
     dockerfilePath: ./backend/Dockerfile
