@@ -54,7 +54,7 @@ export default function App() {
       <section className="hero" id="top">
         <motion.div className="eyebrow" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}><span className="eyebrow-spark"><Sparkles size={12}/></span> YOUR THOUGHTS, IN GOOD COMPANY</motion.div>
         <h1><span>Every prompt.</span><br/><em>A little more alive.</em></h1>
-        <p className="hero-subtitle">A thoughtful space for your next big idea.</p>
+        <p className="hero-subtitle"> Hey, What's on your mind?</p>
       </section>
       <div className="workspace">
         <DecorativeSide side="left" session={session} count={messages.length} promptConfigured={Boolean(systemPrompt.trim())} />
