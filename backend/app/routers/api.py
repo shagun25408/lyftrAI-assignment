@@ -35,17 +35,11 @@ async def chat(payload: ChatRequest, x_simulate_failure: str | None = Header(def
                 continue
     with SessionLocal() as db:
         session = db.get(ChatSession, payload.session_id)
-        if session is None:
-            session = ChatSession(session_id=payload.session_id, system_prompt=payload.system_prompt or DEFAULT_PROMPT)
-            db.add(session)
-            db.flush()
-        elif payload.system_prompt is not None:
-            session.system_prompt = payload.system_prompt
+        effective_prompt = payload.system_prompt or (session.system_prompt if session else DEFAULT_PROMPT)
         history = db.scalars(select(Message).where(Message.session_id == payload.session_id).order_by(Message.id)).all()
-        messages = [{"role": "system", "content": session.system_prompt or DEFAULT_PROMPT}]
+        messages = [{"role": "system", "content": effective_prompt}]
         messages.extend({"role": message.role, "content": message.content} for message in history)
         messages.append({"role": "user", "content": payload.message})
-        db.commit()
     try:
         result = await complete(messages, simulated)
     except AllDeploymentsFailed as exc:
@@ -54,8 +48,10 @@ async def chat(payload: ChatRequest, x_simulate_failure: str | None = Header(def
     with SessionLocal() as db:
         session = db.get(ChatSession, payload.session_id)
         if session is None:
-            session = ChatSession(session_id=payload.session_id, system_prompt=payload.system_prompt or DEFAULT_PROMPT)
+            session = ChatSession(session_id=payload.session_id, system_prompt=effective_prompt)
             db.add(session)
+        else:
+            session.system_prompt = effective_prompt
         session.updated_at = now_iso()
         db.add(Message(session_id=payload.session_id, role="user", content=payload.message))
         db.add(Message(session_id=payload.session_id, role="assistant", content=result["reply"], metadata_json=json.dumps(metadata)))
