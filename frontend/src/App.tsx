@@ -35,6 +35,7 @@ export default function App() {
       setLastMeta(result.metadata)
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Unable to reach Lyftr AI.'
+      setInput(content)
       setError(message); setMessages(prev => prev.filter((item, i) => !(item.role === 'user' && i === prev.length - 1 && item.content === content)))
     } finally { setBusy(false); textareaRef.current?.focus() }
   }, [busy, session, systemPrompt])

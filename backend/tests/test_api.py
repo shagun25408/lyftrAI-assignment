@@ -48,3 +48,21 @@ def test_simulation_fallback_and_all_failure(monkeypatch):
     failed = client.post("/chat", json={"session_id":"sim-all", "message":"try"}, headers={"X-Simulate-Failure":"*=429"})
     assert failed.status_code == 503
     assert failed.json()["detail"]
+
+def test_failed_generation_does_not_create_history(monkeypatch):
+    async def unavailable(messages, simulated):
+        raise llm_service.AllDeploymentsFailed("unavailable")
+    monkeypatch.setattr(api_module, "complete", unavailable)
+    response = client.post("/chat", json={"session_id":"failed-no-write", "message":"do not persist"})
+    assert response.status_code == 503
+    assert client.get("/sessions/failed-no-write/messages").status_code == 404
+
+def test_multi_turn_history_is_sent_to_llm(monkeypatch):
+    seen = []
+    async def recorder(messages, simulated):
+        seen.append(messages)
+        return await fake_result(messages, simulated)
+    monkeypatch.setattr(api_module, "complete", recorder)
+    client.post("/chat", json={"session_id":"memory-check", "message":"Remember: my color is violet."})
+    client.post("/chat", json={"session_id":"memory-check", "message":"What color did I mention?"})
+    assert any(message["content"] == "Remember: my color is violet." for message in seen[-1])
