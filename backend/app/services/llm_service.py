@@ -12,12 +12,10 @@ _cache = Cache(type="local")
 class AllDeploymentsFailed(Exception):
     pass
 
-def _router() -> Router:
+def _router(key: str, index: int) -> Router:
     settings = get_settings()
-    deployments = [{"model_name": "lyftr", "litellm_params": {"model": settings.llm_model, "api_key": key}, "model_info": {"id": f"key_{index}"}} for index, key in enumerate(settings.api_keys, 1)]
-    if not deployments:
-        raise AllDeploymentsFailed("No LLM API keys are configured")
-    return Router(model_list=deployments, num_retries=0)
+    deployment = {"model_name": "lyftr", "litellm_params": {"model": settings.llm_model, "api_key": key}, "model_info": {"id": f"key_{index}"}}
+    return Router(model_list=[deployment], num_retries=0)
 
 def _cache_key(model: str, messages: list[dict[str, str]]) -> str:
     value = json.dumps({"model": model, "messages": messages}, sort_keys=True, ensure_ascii=False)
@@ -33,14 +31,13 @@ async def complete(messages: list[dict[str, str]], simulate: dict[str, int]) -> 
             return {**result, "resolution_source": "LLM_CACHE", "key_id": None, "fallback_attempts": 0, "latency_ms": 0}
     started = time.perf_counter()
     errors = 0
-    router = _router()
-    for index, _key in enumerate(settings.api_keys, 1):
+    for index, key in enumerate(settings.api_keys, 1):
         key_id = f"key_{index}"
         if "*" in simulate or key_id in simulate:
             errors += 1
             continue
         try:
-            response = await router.acompletion(model="lyftr", messages=messages, caching=False)
+            response = await _router(key, index).acompletion(model="lyftr", messages=messages, caching=False)
             usage = response.usage
             result = {"reply": response.choices[0].message.content or "", "model": response.model or settings.llm_model,
                       "input_tokens": usage.prompt_tokens if usage else 0, "output_tokens": usage.completion_tokens if usage else 0}
