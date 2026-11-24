@@ -3,15 +3,19 @@ from pydantic import BaseModel, Field, field_validator
 
 class ChatRequest(BaseModel):
     session_id: str = Field(min_length=1, max_length=128)
-    message: str = Field(min_length=1, max_length=4000)
+    message: str
     system_prompt: str | None = None
 
-    @field_validator("message")
+    @field_validator("message", mode="before")
     @classmethod
-    def nonblank(cls, value: str) -> str:
+    def validate_message(cls, value: str) -> str:
+        if not isinstance(value, str):
+            return value
         value = value.strip()
         if not value:
             raise ValueError("Message cannot be empty")
+        if len(value) > 4000:
+            raise ValueError("Message must be at most 4000 characters")
         return value
 
 class Metadata(BaseModel):

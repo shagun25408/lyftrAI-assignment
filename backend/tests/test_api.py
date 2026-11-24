@@ -37,6 +37,11 @@ def test_validation_and_unknown_session():
     assert client.post("/chat", json={"session_id":"" , "message":"ok"}).status_code == 422
     assert client.get("/sessions/unknown-session/messages").status_code == 404
 
+def test_message_limit_is_applied_after_whitespace_trim(monkeypatch):
+    monkeypatch.setattr(api_module, "complete", fake_result)
+    response = client.post("/chat", json={"session_id":"trim-limit", "message":" "*4500+"short"})
+    assert response.status_code == 200
+
 def test_chat_metadata_history_and_session_isolation(monkeypatch):
     monkeypatch.setattr(api_module, "complete", fake_result)
     first = client.post("/chat", json={"session_id":"isolation-a", "message":"hello"}).json()
